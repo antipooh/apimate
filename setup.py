@@ -37,7 +37,7 @@ setup(
     install_requires=required,
     extras_require={
         'dev': required_dev,
-        'mongodb': ['pymongo']
+        'mongodb': ['pymongo', 'motor']
     },
     author_email='okomkov@gmail.com',
 )

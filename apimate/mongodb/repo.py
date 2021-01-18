@@ -24,11 +24,14 @@ class MongoRepo:
             collection = await self.db.create_collection(self.collection_name)
         return collection
 
+    def model_type_select(self, doc: dict):
+        return self.model_type
+
     async def _get_model(self, identity: str) -> Optional[SavedModel]:
-        return await get_model(await self.get_collection(), self.model_type, identity)
+        return await get_model(await self.get_collection(), self.model_type_select, identity)
 
     async def _insert_model(self, insert: PydanticModel) -> SavedModel:
-        return await insert_model(await self.get_collection(), self.model_type, insert)
+        return await insert_model(await self.get_collection(), self.model_type_select, insert)
 
     async def _update_model_one(self, identity: str, update: PydanticModel) -> bool:
         return await update_model_one(await self.get_collection(), identity, update)
@@ -37,13 +40,13 @@ class MongoRepo:
         return await update_model(await self.get_collection(), query, update)
 
     async def _search_model(self, query: dict, sort: Optional[CursorSort] = None) -> AsyncGenerator[SavedModel, None]:
-        return search_model(await self.get_collection(), self.model_type, query, sort)
+        return search_model(await self.get_collection(), self.model_type_select, query, sort)
 
     async def _search_model_one(self, query: dict) -> Optional[SavedModel]:
-        return await search_model_one(await self.get_collection(), self.model_type, query)
+        return await search_model_one(await self.get_collection(), self.model_type_select, query)
 
     async def _remove_model(self, identity: str) -> bool:
         return await remove_model(await self.get_collection(), identity)
 
     async def _list_model(self, query: SearchQuery, result_type: Type[BaseItemsList]) -> ItemsListType:
-        return await list_model(await self.get_collection(), self.model_type, query, result_type)
+        return await list_model(await self.get_collection(), self.model_type_select, query, result_type)

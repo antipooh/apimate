@@ -3,7 +3,7 @@ from typing import Dict, ForwardRef, List, Union
 
 from pydantic import BaseModel, PydanticValueError
 
-JsonScalar = Union[int, float, bool, None, str]
+JsonScalar = Union[None, bool, int, float, str]
 JsonData = Union[
     List[Union[JsonScalar, ForwardRef('JsonData')]],
     Dict[JsonScalar, Union[JsonScalar, ForwardRef('JsonData')]]

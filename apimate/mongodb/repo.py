@@ -1,10 +1,9 @@
-from functools import cached_property
 from typing import AsyncGenerator, Optional, Type
 
+from apimate.query import BaseItemsList, CursorSort, ItemsListType, SearchQuery
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.collection import Collection
 
-from apimate.query import BaseItemsList, CursorSort, ItemsListType, SearchQuery
 from .crud import (PydanticModel, SavedModel, get_model, insert_model, remove_model, search_model, search_model_one,
                    update_model,
                    update_model_one)
@@ -24,7 +23,7 @@ class MongoRepo:
             collection = await self.db.create_collection(self.collection_name)
         return collection
 
-    def model_type_select(self, doc: dict):
+    def model_type_select(self, doc: dict) -> Type[SavedModel]:
         return self.model_type
 
     async def _get_model(self, identity: str) -> Optional[SavedModel]:

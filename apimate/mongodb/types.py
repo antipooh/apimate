@@ -1,7 +1,7 @@
-from datetime import time, timedelta
+from datetime import time, timedelta, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict, Optional, Union, List
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -68,3 +68,38 @@ def from_mongo(data: Dict) -> Dict:
 
 class InDBModel(BaseModel):
     id: Optional[ObjectIdStr]
+
+
+class DateTimeRange(BaseModel):
+    """
+    Datetime range type.
+
+    First elem - lower bound.
+    Second elem - upper bound.
+    """
+
+    gte: datetime = None
+    lte: datetime = None
+
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v: Union[List, Dict], values=None):
+        """Check border crossing"""
+        gte, lte = None, None
+        try:
+            if isinstance(v, list):
+                gte, lte = v
+            elif isinstance(v, dict):
+                gte = v.get('gte')
+                lte = v.get('lte')
+        except IndexError:
+            return cls(gte=gte, lte=lte)
+
+        if gte and lte:
+            if gte > lte or lte < gte:
+                raise DatetimeBorderCrossing()
+
+        return cls(gte=gte, lte=lte)

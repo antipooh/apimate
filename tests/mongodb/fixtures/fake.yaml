@@ -1,0 +1,17 @@
+# 60237341235cab81fd147e19
+- _id: !!python/object/new:bson.objectid.ObjectId
+    state: !!binary |
+      YCNzQSNcq4H9FH4Z
+  name: MODEL-1
+# 60237341235cab81fd147e1a
+- _id: !!python/object/new:bson.objectid.ObjectId
+    state: !!binary |
+      YCNzQSNcq4H9FH4a
+  name: MODEL-2
+  value: 33.01
+# 60237341235cab81fd147e1b
+- _id: !!python/object/new:bson.objectid.ObjectId
+    state: !!binary |
+      YCNzQSNcq4H9FH4b
+  name: MODEL-3
+  value: 0.02

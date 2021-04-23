@@ -3,7 +3,7 @@ from typing import Type
 from pymongo.collection import Collection
 
 from apimate.query import BaseItemsList, ItemsListType, SearchQuery
-from .crud import SavedModel, TypeSelector
+from .crud import TypeSelector
 from .types import from_mongo
 
 

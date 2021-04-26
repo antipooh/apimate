@@ -20,9 +20,11 @@ class FakeEnum(Enum):
         ({1, 3, 5, 7}, [1, 3, 5, 7]),
         (time(hour=12, minute=3), '12:03:00')
 ))
+@pytest.mark.mongodb
 def test_to_mongo(value, result):
     assert to_mongo({'value': value}) == {'value': result}
 
 
+@pytest.mark.mongodb
 def test_from_mongo():
     assert from_mongo({'_id': ObjectId('5f841314a3dbce365e02bfa1')}) == {'id': ObjectId('5f841314a3dbce365e02bfa1')}

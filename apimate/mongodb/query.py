@@ -1,3 +1,5 @@
+import re
+from enum import Enum
 from typing import Type
 
 from pymongo.collection import Collection
@@ -7,15 +9,33 @@ from .crud import TypeSelector
 from .types import from_mongo
 
 
+def query_2_find(query: SearchQuery) -> dict:
+    result = {}
+    for name in query.__fields_set__:
+        if name not in {'offset', 'limit', 'with_count'}:
+            field = query.__fields__[name]
+            extra = field.field_info.extra
+            value = getattr(query, name)
+            if value is None:
+                continue
+            if isinstance(value, Enum):
+                value = value.value
+            regex = extra.get('search_regex')
+            if regex:
+                value = {'$regex': re.compile(regex.format(value)) if isinstance(regex, str) else value}
+            result[name] = value
+    return result
+
+
 async def list_model(collection: Collection,
                      type_selector: TypeSelector,
                      query: SearchQuery,
                      result_type: Type[BaseItemsList]) -> ItemsListType:
     count = None
-    query_dict = query.query()
+    find_condition = query_2_find(query)
     if query.with_count:
-        count = await collection.count_documents(query_dict)
-    cursor = collection.find(query_dict)
+        count = await collection.count_documents(find_condition)
+    cursor = collection.find(find_condition)
     try:
         if query.limit:
             cursor = cursor.limit(query.limit)

@@ -1,34 +1,162 @@
-import re
+import abc
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
 from enum import Enum, IntEnum
-from typing import List, Optional, Tuple, TypeVar
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, conint
+from fastapi import Query
+from pydantic import BaseModel, Json, ValidationError, conint, parse_obj_as
 
 
-class SearchQuery(BaseModel):
-    offset: conint(ge=0) = 0
-    limit: conint(ge=1, lt=251) = 20
-    with_count: bool = False
+class SortDirection(IntEnum):
+    ASC = 1
+    DESC = -1
 
-    class Config:
-        anystr_strip_whitespace = True
 
-    def query(self):
-        result = {}
-        for name in self.__fields_set__:
-            if name not in {'offset', 'limit', 'with_count'}:
-                field = self.__fields__[name]
-                extra = field.field_info.extra
-                value = getattr(self, name)
-                if value is None:
-                    continue
-                if isinstance(value, Enum):
-                    value = value.value
-                regex = extra.get('search_regex')
-                if regex:
-                    value = {'$regex': re.compile(regex.format(value)) if isinstance(regex, str) else value}
-                result[name] = value
+CursorSort = List[Tuple[str, SortDirection]]
+
+
+@dataclass
+class Filter:
+    field: str
+
+
+@dataclass
+class IdsFilter(Filter):
+    values: list
+
+
+class TextFilterOperation(Enum):
+    EQ = '='
+    NEQ = '!'
+    START = '^'
+    END = '$'
+    CONTAIN = '%'
+
+
+@dataclass
+class TextFilter(Filter):
+    op: TextFilterOperation
+    value: str
+
+
+class OrderFilterOperation(Enum):
+    EQ = '='
+    NEQ = '!'
+    GT = '>'
+    GTE = '>='
+    LT = '<'
+    LTE = '<='
+
+
+@dataclass
+class OrderFilter(Filter):
+    op: OrderFilterOperation
+
+
+@dataclass
+class IntFilter(OrderFilter):
+    value: int
+
+
+@dataclass
+class DecimalFilter(OrderFilter):
+    value: Decimal
+
+
+@dataclass
+class DatetimeFilter(OrderFilter):
+    value: datetime
+
+
+class FilterField:
+    name: str
+
+    @classmethod
+    def parse_filter_value(cls, field: str, value: Json) -> Filter:
+        if isinstance(value, str):
+            return TextFilter(field=field, op=TextFilterOperation.EQ, value=value)
+        else:
+            parsed = parse_obj_as(Tuple[str, str], value)
+            op = TextFilterOperation(parsed[0])
+            return TextFilter(field=field, op=op, value=parsed[1])
+
+
+class OrderedFilterField:
+    filter_type: Type[OrderFilter]
+
+    # noinspection PyArgumentList
+    @classmethod
+    def parse_filter_value(cls, field: str, value: Json) -> Filter:
+        value_type = cls.filter_type.__annotations__['value']
+        try:
+            parsed = parse_obj_as(value_type, value)
+            return cls.filter_type(field=field, op=OrderFilterOperation.EQ, value=parsed)
+        except ValidationError:
+            parsed = parse_obj_as(Tuple[str, value_type], value)
+            op = OrderFilterOperation(parsed[0])
+            return cls.filter_type(field=field, op=op, value=parsed[1])
+
+
+class IntFilterField(OrderedFilterField):
+    filter_type = IntFilter
+
+
+class DecimalFilterField(OrderedFilterField):
+    filter_type = DecimalFilter
+
+
+class DatetimeFilterField(OrderedFilterField):
+    filter_type = DatetimeFilter
+
+
+class SearchQueryMeta(abc.ABCMeta):
+
+    def __new__(mcs, name, bases, namespace, **kwargs):
+        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+        filters = {}
+        for base in bases:
+            base_filters = getattr(base, '__filters__', None)
+            if base_filters:
+                filters.update(base_filters)
+        for key, field in cls.__dict__.items():
+            if isinstance(field, FilterField):
+                filters[key] = field
+        cls.__filters__ = filters
+        return cls
+
+
+class SearchQuery(metaclass=SearchQueryMeta):
+    __filters__: Dict[str, FilterField]
+    id_type = str
+
+    def __init__(
+            self,
+            filter: Optional[Json] = Query(None),
+            offset: conint(ge=0) = Query(0),
+            limit: conint(ge=1, lt=251) = Query(20),
+            with_count: bool = False
+    ):
+        self.filter = self.parse_filter_values(filter) if filter else []
+        self.limit = limit
+        self.offset = offset
+        self.with_count = with_count
+
+    def parse_filter_values(self, values: Json) -> List[Filter]:
+        filter_values = parse_obj_as(Dict[str, Any], values)
+        if 'ids' in filter_values:
+            return [self.parse_ids(filter_values['ids'])]
+        result = []
+        for key, value in filter_values.items():
+            filter = self.__filters__.get(key)
+            if filter:
+                result.append(filter.parse_filter_value(key, value))
         return result
+
+    def parse_ids(self, values: Json) -> Filter:
+        parsed = parse_obj_as(List[self.id_type], values)
+        return IdsFilter(field='ids', values=parsed)
 
 
 ItemsListType = TypeVar('ItemsListType')
@@ -40,11 +168,3 @@ class BaseItemsList(BaseModel):
     limit: int
     sort: Optional[str] = None
     count: Optional[int] = None
-
-
-class SortDirection(IntEnum):
-    ASC = 1
-    DESC = -1
-
-
-CursorSort = List[Tuple[str, SortDirection]]

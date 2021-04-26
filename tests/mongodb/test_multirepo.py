@@ -28,6 +28,7 @@ def repo(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_insert_model_1(repo):
     saved = await repo._insert_model(FakeMultiModel1(name='MODEL'))
     assert isinstance(saved, FakeMultiModel1)
@@ -36,6 +37,7 @@ async def test_insert_model_1(repo):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_insert_model_1(repo):
     saved = await repo._insert_model(FakeMultiModel2(name='MODEL', value=15))
     assert isinstance(saved, FakeMultiModel2)
@@ -45,6 +47,7 @@ async def test_insert_model_1(repo):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_get_model_1(repo):
     loaded = await repo._get_model('60237341235cab81fd147e19')
     assert isinstance(loaded, FakeMultiModel1)
@@ -53,6 +56,7 @@ async def test_get_model_1(repo):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_get_model_2(repo):
     loaded = await repo._get_model('60237341235cab81fd147e1a')
     assert isinstance(loaded, FakeMultiModel2)
@@ -62,6 +66,7 @@ async def test_get_model_2(repo):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_search_model(repo):
     ls = [it async for it in await repo._search_model({'name': {'$ne': 'MODEL-2'}})]
     assert ls == [
@@ -71,6 +76,7 @@ async def test_search_model(repo):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_search_model_one_1(repo):
     loaded = await repo._search_model_one({'value': {'$eq': None}})
     assert isinstance(loaded, FakeMultiModel1)
@@ -79,6 +85,7 @@ async def test_search_model_one_1(repo):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_search_model_one_2(repo):
     loaded = await repo._search_model_one({'value': {'$gt': 10}})
     assert isinstance(loaded, FakeMultiModel2)

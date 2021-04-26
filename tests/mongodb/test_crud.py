@@ -14,6 +14,7 @@ class FakeModel(InDBModel):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_insert_model(collection):
     saved = await insert_model(collection, lambda _: FakeModel, FakeModel(name='MODEL', value=15))
     assert isinstance(saved, FakeModel)
@@ -23,6 +24,7 @@ async def test_insert_model(collection):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_get_model(collection):
     loaded = await get_model(collection, lambda _: FakeModel, '60237341235cab81fd147e1a')
     assert isinstance(loaded, FakeModel)
@@ -32,6 +34,7 @@ async def test_get_model(collection):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_update_model_one(collection):
     assert await update_model_one(collection, '60237341235cab81fd147e1a', FakeModel(name='NEW-NAME')) is True
     obj = await collection.find_one({'_id': ObjectId('60237341235cab81fd147e1a')})
@@ -40,6 +43,7 @@ async def test_update_model_one(collection):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_update_model(collection):
     assert await update_model(collection, {'value': {'$lt': 20}}, {'$set': {'name': 'UPDATED'}}) is True
     ls = [it['_id'] async for it in collection.find({'name': 'UPDATED'})]
@@ -47,12 +51,14 @@ async def test_update_model(collection):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_search_model(collection):
     ls = [it async for it in search_model(collection, lambda _: FakeModel, {'value': {'$lt': 10}})]
     assert ls == [FakeModel(id='60237341235cab81fd147e1b', name='MODEL-3', value=0.02)]
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_search_model_one(collection):
     loaded = await search_model_one(collection, lambda _: FakeModel, {'name': 'MODEL-2'})
     assert isinstance(loaded, FakeModel)
@@ -62,6 +68,7 @@ async def test_search_model_one(collection):
 
 
 @pytest.mark.asyncio
+@pytest.mark.mongodb
 async def test_remove_model(collection):
     assert await remove_model(collection, '60237341235cab81fd147e1b') is True
     ls = [it['_id'] async for it in collection.find()]

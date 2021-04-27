@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum, IntEnum
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple, Type, TypeVar
 
 from fastapi import Query
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Json, ValidationError, conint, parse_obj_as
 
 
@@ -17,14 +18,14 @@ class SortDirection(IntEnum):
 CursorSort = List[Tuple[str, SortDirection]]
 
 
-@dataclass
+@dataclass(frozen=True)
 class Filter:
     field: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class IdsFilter(Filter):
-    values: list
+    values: FrozenSet
 
 
 class TextFilterOperation(Enum):
@@ -35,7 +36,7 @@ class TextFilterOperation(Enum):
     CONTAIN = '%'
 
 
-@dataclass
+@dataclass(frozen=True)
 class TextFilter(Filter):
     op: TextFilterOperation
     value: str
@@ -50,22 +51,23 @@ class OrderFilterOperation(Enum):
     LTE = '<='
 
 
-@dataclass
+@dataclass(frozen=True)
 class OrderFilter(Filter):
     op: OrderFilterOperation
+    value: Any
 
 
-@dataclass
+@dataclass(frozen=True)
 class IntFilter(OrderFilter):
     value: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class DecimalFilter(OrderFilter):
     value: Decimal
 
 
-@dataclass
+@dataclass(frozen=True)
 class DatetimeFilter(OrderFilter):
     value: datetime
 
@@ -83,7 +85,7 @@ class FilterField:
             return TextFilter(field=field, op=op, value=parsed[1])
 
 
-class OrderedFilterField:
+class OrderedFilterField(FilterField):
     filter_type: Type[OrderFilter]
 
     # noinspection PyArgumentList
@@ -138,24 +140,26 @@ class SearchQuery(metaclass=SearchQueryMeta):
             limit: conint(ge=1, lt=251) = Query(20),
             with_count: bool = False
     ):
-        self.filter = self.parse_filter_values(filter) if filter else []
+        self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()
         self.limit = limit
         self.offset = offset
         self.with_count = with_count
 
-    def parse_filter_values(self, values: Json) -> List[Filter]:
+    def parse_filter_values(self, values: Json) -> Iterable[Filter]:
         filter_values = parse_obj_as(Dict[str, Any], values)
         if 'ids' in filter_values:
-            return [self.parse_ids(filter_values['ids'])]
+            return self.parse_ids(filter_values['ids']),
         result = []
         for key, value in filter_values.items():
             filter = self.__filters__.get(key)
             if filter:
                 result.append(filter.parse_filter_value(key, value))
+            else:
+                RequestValidationError([f'Bad filter value {{{key}: {value}}}'])
         return result
 
     def parse_ids(self, values: Json) -> Filter:
-        parsed = parse_obj_as(List[self.id_type], values)
+        parsed = parse_obj_as(FrozenSet[self.id_type], values)
         return IdsFilter(field='ids', values=parsed)
 
 

@@ -30,7 +30,7 @@ def test_collect_base_filters():
 
 def test_parse_ids():
     search = SearchQuery(filter={"ids": ['A', 'B', 'C']})
-    assert search.filter == [IdsFilter(field='ids', values=['A', 'B', 'C'])]
+    assert search.filter == {IdsFilter(field='ids', values=frozenset(('A', 'B', 'C')))}
 
 
 @pytest.mark.parametrize('filter, operation, value', (
@@ -41,7 +41,7 @@ def test_parse_ids():
 ))
 def test_text_filter(filter, operation, value):
     search = FakeSearchQuery(filter={'text': filter})
-    assert search.filter == [TextFilter(field='text', op=operation, value=value)]
+    assert search.filter == {TextFilter(field='text', op=operation, value=value)}
 
 
 @pytest.mark.parametrize('filter, operation, value', (

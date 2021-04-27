@@ -8,6 +8,7 @@ from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple, Type, 
 from fastapi import Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Json, ValidationError, conint, parse_obj_as
+from pydantic.error_wrappers import ErrorWrapper
 
 
 class SortDirection(IntEnum):
@@ -142,7 +143,10 @@ class SearchQuery(metaclass=SearchQueryMeta):
     ):
         self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()
         self.limit = limit
-        self.offset = offset
+        try:
+            self.offset = parse_obj_as(self.id_type, offset) if offset else None
+        except ValidationError as e:
+            raise RequestValidationError([ErrorWrapper(e, 'filter')])
         self.with_count = with_count
 
     def parse_filter_values(self, values: Json) -> Iterable[Filter]:
@@ -155,7 +159,9 @@ class SearchQuery(metaclass=SearchQueryMeta):
             if filter:
                 result.append(filter.parse_filter_value(key, value))
             else:
-                RequestValidationError([f'Bad filter value {{{key}: {value}}}'])
+                raise RequestValidationError([
+                    ErrorWrapper(ValueError(f'Bad filter value {{{key}: {value}}}'), 'filter')
+                ])
         return result
 
     def parse_ids(self, values: Json) -> Filter:
@@ -168,7 +174,7 @@ ItemsListType = TypeVar('ItemsListType')
 
 class BaseItemsList(BaseModel):
     items: List[BaseModel]
-    offset: int
+    offset: Optional[str]
+    last: Optional[str]
     limit: int
-    sort: Optional[str] = None
     count: Optional[int] = None

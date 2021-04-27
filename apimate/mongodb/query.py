@@ -41,9 +41,18 @@ class MongodbSearchQuery(SearchQuery):
                 find_request[field].update(cond)
             else:
                 raise NotImplementedError(f'Transform for filter {filter.__class__} not implemented')
-        if self.offset:
-            find_request['_id'] = {'$gt': ObjectId(self.offset)}
         return dict(find_request)
+
+    @cached_property
+    def paged_find(self) -> dict:
+        result = self.find
+        if self.offset:
+            last_id = ObjectId(self.offset)
+            if '_id' in result:
+                result['_id']['$gt'] = last_id
+            else:
+                result['_id'] = {'$gt': last_id}
+        return result
 
     @cached_property
     def sort(self) -> Optional[dict]:
@@ -77,7 +86,7 @@ async def list_model(collection: Collection,
     count = None
     if query.with_count:
         count = await collection.count_documents(query.find)
-    cursor = collection.find(query.find)
+    cursor = collection.find(query.paged_find)
     try:
         if query.sort:
             cursor = cursor.sort(query.sort)
@@ -89,4 +98,8 @@ async def list_model(collection: Collection,
             items.append(model_type.parse_obj(data))
     finally:
         await cursor.close()
-    return result_type(items=items, offset=query.offset, limit=query.limit, count=count)
+    return result_type(items=items,
+                       offset=str(query.offset) if query.offset else None,
+                       last=str(items[-1].id) if items else None,
+                       limit=query.limit,
+                       count=count)

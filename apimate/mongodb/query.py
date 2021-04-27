@@ -32,6 +32,7 @@ class MongodbSearchQuery(SearchQuery):
             field, cond = None, None
             if isinstance(filter, IdsFilter):
                 field, cond = self.filter_ids(filter)
+                return {field: cond}  # If has ids list, d`not use any other filters
             elif isinstance(filter, TextFilter):
                 field, cond = self.filter_text(filter)
             elif isinstance(filter, OrderFilter):
@@ -40,11 +41,13 @@ class MongodbSearchQuery(SearchQuery):
                 find_request[field].update(cond)
             else:
                 raise NotImplementedError(f'Transform for filter {filter.__class__} not implemented')
+        if self.offset:
+            find_request['_id'] = {'$gt': ObjectId(self.offset)}
         return dict(find_request)
 
     @cached_property
     def sort(self) -> Optional[dict]:
-        ...
+        pass
 
     def filter_ids(self, filter: IdsFilter) -> Tuple[str, dict]:
         return '_id', {'$in': [ObjectId(x) for x in filter.values]}
@@ -76,10 +79,9 @@ async def list_model(collection: Collection,
         count = await collection.count_documents(query.find)
     cursor = collection.find(query.find)
     try:
-        if query.limit:
-            cursor = cursor.limit(query.limit)
-        if query.offset:
-            cursor = cursor.skip(query.offset)
+        if query.sort:
+            cursor = cursor.sort(query.sort)
+        cursor = cursor.limit(query.limit)
         items = []
         async for doc in cursor:
             data = from_mongo(doc)

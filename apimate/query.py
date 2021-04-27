@@ -136,7 +136,7 @@ class SearchQuery(metaclass=SearchQueryMeta):
     def __init__(
             self,
             filter: Optional[Json] = Query(None),
-            offset: conint(ge=0) = Query(0),
+            offset: Optional[id_type] = Query(None),
             limit: conint(ge=1, lt=251) = Query(20),
             with_count: bool = False
     ):

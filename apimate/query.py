@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum, IntEnum
-from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple, Type, TypeVar, Union
 
 from fastapi import Query
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Json, ValidationError, conint, parse_obj_as
+from pydantic import BaseModel, conint, parse_obj_as
 from pydantic.error_wrappers import ErrorWrapper
 
 
@@ -76,30 +76,29 @@ class DatetimeFilter(OrderFilter):
 class FilterField:
     name: str
 
-    @classmethod
-    def parse_filter_value(cls, field: str, value: Json) -> Filter:
-        if isinstance(value, str):
-            return TextFilter(field=field, op=TextFilterOperation.EQ, value=value)
+    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+        if isinstance(value, Tuple):
+            op = TextFilterOperation(value[0])
+            value = str(value[1])
         else:
-            parsed = parse_obj_as(Tuple[str, str], value)
-            op = TextFilterOperation(parsed[0])
-            return TextFilter(field=field, op=op, value=parsed[1])
+            op = TextFilterOperation.EQ
+            value = str(value)
+        return TextFilter(field=self.name, op=op, value=value)
 
 
 class OrderedFilterField(FilterField):
     filter_type: Type[OrderFilter]
 
     # noinspection PyArgumentList
-    @classmethod
-    def parse_filter_value(cls, field: str, value: Json) -> Filter:
-        value_type = cls.filter_type.__annotations__['value']
-        try:
-            parsed = parse_obj_as(value_type, value)
-            return cls.filter_type(field=field, op=OrderFilterOperation.EQ, value=parsed)
-        except ValidationError:
-            parsed = parse_obj_as(Tuple[str, value_type], value)
-            op = OrderFilterOperation(parsed[0])
-            return cls.filter_type(field=field, op=op, value=parsed[1])
+    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+        value_type = self.filter_type.__annotations__['value']
+        if isinstance(value, Tuple):
+            op = OrderFilterOperation(value[0])
+            value = parse_obj_as(value_type, value[1])
+        else:
+            op = OrderFilterOperation.EQ
+            value = parse_obj_as(value_type, value)
+        return self.filter_type(field=self.name, op=op, value=value)
 
 
 class IntFilterField(OrderedFilterField):
@@ -126,8 +125,12 @@ class SearchQueryMeta(abc.ABCMeta):
         for key, field in cls.__dict__.items():
             if isinstance(field, FilterField):
                 filters[key] = field
+                field.name = key
         cls.__filters__ = filters
         return cls
+
+
+FilterJson = Dict[str, Union[str, List[Any], Dict[str, Any]]]
 
 
 class SearchQuery(metaclass=SearchQueryMeta):
@@ -136,35 +139,39 @@ class SearchQuery(metaclass=SearchQueryMeta):
 
     def __init__(
             self,
-            filter: Optional[Json] = Query(None),
+            filter: Optional[FilterJson] = Query(None),
             offset: Optional[id_type] = Query(None),
             limit: conint(ge=1, lt=251) = Query(20),
             with_count: bool = False
     ):
-        self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()
-        self.limit = limit
         try:
+            self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()
+            self.limit = limit
             self.offset = parse_obj_as(self.id_type, offset) if offset else None
-        except ValidationError as e:
-            raise RequestValidationError([ErrorWrapper(e, 'filter')])
-        self.with_count = with_count
+            self.with_count = with_count
+        except Exception as e:
+            self.raise_request_error(e)
 
-    def parse_filter_values(self, values: Json) -> Iterable[Filter]:
-        filter_values = parse_obj_as(Dict[str, Any], values)
-        if 'ids' in filter_values:
-            return self.parse_ids(filter_values['ids']),
+    def raise_request_error(self, e: Exception) -> None:
+        raise RequestValidationError([ErrorWrapper(e, 'filter')])
+
+    def parse_filter_values(self, values: FilterJson) -> Iterable[Filter]:
         result = []
-        for key, value in filter_values.items():
-            filter = self.__filters__.get(key)
-            if filter:
-                result.append(filter.parse_filter_value(key, value))
+        for field_name, condition in values.items():
+            if field_name == 'ids':
+                return [self.parse_ids(condition)]
             else:
-                raise RequestValidationError([
-                    ErrorWrapper(ValueError(f'Bad filter value {{{key}: {value}}}'), 'filter')
-                ])
+                field = self.__filters__.get(field_name)
+                if field:
+                    if isinstance(condition, dict):
+                        result.extend(field.parse_value(x) for x in condition.items())
+                    else:
+                        result.append(field.parse_value(condition))
+                else:
+                    raise KeyError(f'Bad field in filter "{field_name}"')
         return result
 
-    def parse_ids(self, values: Json) -> Filter:
+    def parse_ids(self, values: List[Any]) -> Filter:
         parsed = parse_obj_as(FrozenSet[self.id_type], values)
         return IdsFilter(field='ids', values=parsed)
 

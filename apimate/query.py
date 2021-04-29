@@ -7,7 +7,7 @@ from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple, Type, 
 
 from fastapi import Query
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, conint, parse_obj_as
+from pydantic import BaseModel, Json, conint, parse_obj_as
 from pydantic.error_wrappers import ErrorWrapper
 
 
@@ -139,7 +139,7 @@ class SearchQuery(metaclass=SearchQueryMeta):
 
     def __init__(
             self,
-            filter: Optional[FilterJson] = Query(None),
+            filter: Optional[Json] = Query(None),
             offset: Optional[id_type] = Query(None),
             limit: conint(ge=1, lt=251) = Query(20),
             with_count: bool = False
@@ -155,9 +155,10 @@ class SearchQuery(metaclass=SearchQueryMeta):
     def raise_request_error(self, e: Exception) -> None:
         raise RequestValidationError([ErrorWrapper(e, 'filter')])
 
-    def parse_filter_values(self, values: FilterJson) -> Iterable[Filter]:
+    def parse_filter_values(self, values: Json) -> Iterable[Filter]:
+        filter = parse_obj_as(FilterJson, values)
         result = []
-        for field_name, condition in values.items():
+        for field_name, condition in filter.items():
             if field_name == 'ids':
                 return [self.parse_ids(condition)]
             else:

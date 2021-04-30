@@ -142,7 +142,7 @@ class SearchQuery(metaclass=SearchQueryMeta):
             filter: Optional[Json] = Query(None),
             offset: Optional[id_type] = Query(None),
             limit: conint(ge=1, lt=251) = Query(20),
-            with_count: bool = False
+            with_count: bool = Query(False, alias='withCount')
     ):
         try:
             self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()

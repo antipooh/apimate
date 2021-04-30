@@ -36,4 +36,4 @@ def test_filters(filter, result, make_query):
 
 def test_offset(make_query):
     query = make_query({}, offset='6086ae5ea8f76b5d464350f6')
-    assert query.find == {'_id': {'$gt': ObjectId('6086ae5ea8f76b5d464350f6')}}
+    assert query.paged_find == {'_id': {'$gt': ObjectId('6086ae5ea8f76b5d464350f6')}}

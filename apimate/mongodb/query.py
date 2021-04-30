@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from functools import cached_property
-from typing import Optional, Tuple, Type
+from typing import Tuple, Type
 
 from bson import ObjectId
 from pydantic import constr
@@ -53,10 +53,6 @@ class MongodbSearchQuery(SearchQuery):
             else:
                 result['_id'] = {'$gt': last_id}
         return result
-
-    @cached_property
-    def sort(self) -> Optional[dict]:
-        pass
 
     def filter_ids(self, filter: IdsFilter) -> Tuple[str, dict]:
         return '_id', {'$in': [ObjectId(x) for x in filter.values]}

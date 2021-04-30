@@ -2,19 +2,19 @@ import pytest
 from bson import ObjectId
 
 from apimate.mongodb.query import MongodbSearchQuery
-from apimate.query import FilterField, IntFilterField
+from apimate.query import IntQueryField, QueryField
 
 
 class FakeSearch(MongodbSearchQuery):
-    atext = FilterField()
-    btext = FilterField()
-    ivalue = IntFilterField()
+    atext = QueryField()
+    btext = QueryField()
+    ivalue = IntQueryField()
 
 
 @pytest.fixture
 def make_query():
-    def fabric(filter, offset=None):
-        return FakeSearch(filter=filter, offset=offset)
+    def fabric(filter, offset=None, sort=None):
+        return FakeSearch(filter=filter, offset=offset, sort=sort)
 
     return fabric
 

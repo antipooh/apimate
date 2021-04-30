@@ -85,7 +85,7 @@ async def list_model(collection: Collection,
     cursor = collection.find(query.paged_find)
     try:
         if query.sort:
-            cursor = cursor.sort(query.sort)
+            cursor = cursor.sort(*query.sort)
         cursor = cursor.limit(query.limit)
         items = []
         async for doc in cursor:

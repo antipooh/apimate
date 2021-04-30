@@ -164,15 +164,15 @@ class SearchQuery(metaclass=SearchQueryMeta):
             self,
             filter: Optional[Json] = Query(None),
             sort: Optional[Union[Json, str]] = Query(None),
-            offset: Optional[id_type] = Query(None),
+            page: int = Query(0),
             limit: conint(ge=1, lt=251) = Query(20),
             with_count: bool = Query(False, alias='withCount')
     ):
         try:
             self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()
             self.sort: Optional[Sort] = self.parse_sort_value(sort) if sort else self.default_sort
+            self.page = page
             self.limit = limit
-            self.offset = parse_obj_as(self.id_type, offset) if offset else None
             self.with_count = with_count
         except Exception as e:
             self.raise_request_error(e)
@@ -224,7 +224,6 @@ ItemsListType = TypeVar('ItemsListType')
 
 class BaseItemsList(BaseModel):
     items: List[BaseModel]
-    offset: Optional[str]
-    last: Optional[str]
+    page: Optional[int]
     limit: int
     count: Optional[int] = None

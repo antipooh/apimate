@@ -14,7 +14,7 @@ class FakeSearchQuery(SearchQuery):
 
 
 def test_collect_fields():
-    query = FakeSearchQuery(filter=None, offset=None, sort=None)
+    query = FakeSearchQuery(filter=None, sort=None)
     assert len(query.__fields__) == 1
     filter = query.__fields__['text']
     assert isinstance(filter, QueryField)
@@ -26,7 +26,7 @@ class InheritedFakeSearchQuery(FakeSearchQuery):
 
 
 def test_collect_base_fields():
-    query = InheritedFakeSearchQuery(filter=None, offset=None, sort=None)
+    query = InheritedFakeSearchQuery(filter=None, sort=None)
     assert set(query.__fields__) == {'text', 'value'}
     assert isinstance(query.__fields__['text'], QueryField)
     assert isinstance(query.__fields__['value'], QueryField)
@@ -42,7 +42,7 @@ def test_bad_default_sort():
 
 
 def test_parse_ids():
-    search = SearchQuery(filter={"ids": ['A', 'B', 'C']}, offset=None, sort=None)
+    search = SearchQuery(filter={"ids": ['A', 'B', 'C']}, sort=None)
     assert search.filter == {IdsFilter(field='ids', values=frozenset(('A', 'B', 'C')))}
 
 
@@ -53,13 +53,13 @@ def test_parse_ids():
         ({'%': 'No'}, TextFilterOperation.CONTAIN, 'No'),
 ))
 def test_text_filter(filter, operation, value):
-    search = FakeSearchQuery(filter={'text': filter}, offset=None, sort=None)
+    search = FakeSearchQuery(filter={'text': filter}, sort=None)
     assert search.filter == frozenset([TextFilter(field='text', op=operation, value=value)])
 
 
 def test_multi_filter():
     search = FakeSearchQuery(filter={'text': {'=': 'A', '!': 'B'}},
-                             offset=None, sort=None)
+                             sort=None)
     assert search.filter == {TextFilter(field='text', op=TextFilterOperation.EQ, value='A'),
                              TextFilter(field='text', op=TextFilterOperation.NEQ, value='B')}
 
@@ -104,5 +104,5 @@ def test_datetime_filter(filter, operation, value):
         (None, ('text', SortDirection.DESC)),
 ))
 def test_sort(sort, result):
-    search = FakeSearchQuery(filter=None, offset=None, sort=sort)
+    search = FakeSearchQuery(filter=None, sort=sort)
     assert search.sort == result

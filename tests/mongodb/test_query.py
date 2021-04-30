@@ -13,8 +13,8 @@ class FakeSearch(MongodbSearchQuery):
 
 @pytest.fixture
 def make_query():
-    def fabric(filter, offset=None, sort=None):
-        return FakeSearch(filter=filter, offset=offset, sort=sort)
+    def fabric(filter, sort=None):
+        return FakeSearch(filter=filter, sort=sort)
 
     return fabric
 
@@ -32,8 +32,3 @@ def test_filter_ids(make_query):
 def test_filters(filter, result, make_query):
     query = make_query(filter)
     assert query.find == result
-
-
-def test_offset(make_query):
-    query = make_query({}, offset='6086ae5ea8f76b5d464350f6')
-    assert query.paged_find == {'_id': {'$gt': ObjectId('6086ae5ea8f76b5d464350f6')}}

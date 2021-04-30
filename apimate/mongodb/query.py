@@ -9,9 +9,9 @@ from pymongo.collection import Collection
 
 from apimate.query import (BaseItemsList, IdsFilter, ItemsListType, OrderFilter, OrderFilterOperation, SearchQuery,
                            TextFilter, TextFilterOperation)
-from apimate.types import ID_STRING
 from .crud import TypeSelector
 from .types import from_mongo
+from ..types import ID_STRING
 
 
 class MongodbSearchQuery(SearchQuery):
@@ -43,17 +43,6 @@ class MongodbSearchQuery(SearchQuery):
                 raise NotImplementedError(f'Transform for filter {filter.__class__} not implemented')
         return dict(find_request)
 
-    @cached_property
-    def paged_find(self) -> dict:
-        result = self.find
-        if self.offset:
-            last_id = ObjectId(self.offset)
-            if '_id' in result:
-                result['_id']['$gt'] = last_id
-            else:
-                result['_id'] = {'$gt': last_id}
-        return result
-
     def filter_ids(self, filter: IdsFilter) -> Tuple[str, dict]:
         return '_id', {'$in': [ObjectId(x) for x in filter.values]}
 
@@ -82,10 +71,12 @@ async def list_model(collection: Collection,
     count = None
     if query.with_count:
         count = await collection.count_documents(query.find)
-    cursor = collection.find(query.paged_find)
+    cursor = collection.find(query.find)
     try:
         if query.sort:
             cursor = cursor.sort(*query.sort)
+        if query.page:
+            cursor = cursor.skip(query.page * query.limit)
         cursor = cursor.limit(query.limit)
         items = []
         async for doc in cursor:
@@ -95,7 +86,6 @@ async def list_model(collection: Collection,
     finally:
         await cursor.close()
     return result_type(items=items,
-                       offset=str(query.offset) if query.offset else None,
-                       last=str(items[-1].id) if items else None,
+                       page=query.page,
                        limit=query.limit,
                        count=count)

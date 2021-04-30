@@ -43,6 +43,10 @@ class MongodbSearchQuery(SearchQuery):
                 raise NotImplementedError(f'Transform for filter {filter.__class__} not implemented')
         return dict(find_request)
 
+    @property
+    def sorting(self) -> Tuple[str, int]:
+        return self.sort[0], self.sort[1].value
+
     def filter_ids(self, filter: IdsFilter) -> Tuple[str, dict]:
         return '_id', {'$in': [ObjectId(x) for x in filter.values]}
 
@@ -75,8 +79,8 @@ async def list_model(collection: Collection,
     try:
         if query.sort:
             cursor = cursor.sort(*query.sort)
-        if query.page:
-            cursor = cursor.skip(query.page * query.limit)
+        if query.page > 1:
+            cursor = cursor.skip((query.page - 1) * query.limit)
         cursor = cursor.limit(query.limit)
         items = []
         async for doc in cursor:

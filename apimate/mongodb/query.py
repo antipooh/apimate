@@ -1,17 +1,29 @@
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import cached_property
-from typing import Tuple, Type
+from typing import Any, Tuple, Type, Union
 
 from bson import ObjectId
-from pydantic import constr
+from pydantic import constr, parse_obj_as
 from pymongo.collection import Collection
 
-from apimate.query import (BaseItemsList, IdsFilter, ItemsListType, OrderFilter, OrderFilterOperation, SearchQuery,
-                           TextFilter, TextFilterOperation)
+from apimate.query import (BaseItemsList, BoolFilter, Filter, IdsFilter, ItemsListType, OrderFilter,
+                           OrderFilterOperation, QueryField, SearchQuery, TextFilter, TextFilterOperation)
 from .crud import TypeSelector
 from .types import from_mongo
 from ..types import ID_STRING
+
+
+@dataclass(frozen=True)
+class RefFilter(Filter):
+    value: ObjectId
+
+
+class RefQueryField(QueryField):
+
+    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+        return RefFilter(field=self.name, value=ObjectId(parse_obj_as(constr(regex=ID_STRING), value)))
 
 
 class MongodbSearchQuery(SearchQuery):
@@ -35,6 +47,8 @@ class MongodbSearchQuery(SearchQuery):
                 return {field: cond}  # If has ids list, d`not use any other filters
             elif isinstance(filter, TextFilter):
                 field, cond = self.filter_text(filter)
+            elif isinstance(filter, (BoolFilter, RefFilter)):
+                field, cond = self.filter_equal(filter)
             elif isinstance(filter, OrderFilter):
                 field, cond = self.filter_ordered(filter)
             if field and cond:
@@ -66,6 +80,9 @@ class MongodbSearchQuery(SearchQuery):
 
     def filter_ordered(self, filter: OrderFilter) -> Tuple[str, dict]:
         return filter.field, {self.order_filter_map[filter.op]: filter.value}
+
+    def filter_equal(self, filter: Union[BoolFilter, RefFilter]) -> Tuple[str, dict]:
+        return filter.field, {'$eq': filter.value}
 
 
 async def list_model(collection: Collection,

@@ -31,6 +31,11 @@ class IdsFilter(Filter):
     values: FrozenSet
 
 
+@dataclass(frozen=True)
+class BoolFilter(Filter):
+    value: bool
+
+
 class TextFilterOperation(Enum):
     EQ = '='
     NEQ = '!'
@@ -98,6 +103,12 @@ class QueryField:
 
     def can_sort(self, direction: SortDirection) -> bool:
         return direction.ASC and FieldSort.ASC in self.sort or direction.DESC and FieldSort.DESC in self.sort
+
+
+class BoolQueryField(QueryField):
+
+    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+        return BoolFilter(field=self.name, value=parse_obj_as(bool, value))
 
 
 class OrderedQueryField(QueryField):

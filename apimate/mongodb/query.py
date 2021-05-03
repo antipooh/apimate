@@ -148,10 +148,7 @@ class Relation:
 async def inject_relations(model: SavedModel, relations: List[Relation]) -> SavedModel:
     for relation in relations:
         relation.extract_id(model)
-    results = await asyncio.gather(*(relation.load() for relation in relations), return_exceptions=True)
-    for result in results:
-        if isinstance(result, Exception):
-            raise result
+    await asyncio.gather(*(relation.load() for relation in relations), return_exceptions=True)
     return reduce(lambda x, r: r.inject(x), relations, model)
 
 
@@ -159,9 +156,6 @@ async def inject_list_relations(items: BaseItemsList, relations: List[Relation])
     for item in items.items:
         for relation in relations:
             relation.extract_id(cast(SavedModel, item))
-    results = await asyncio.gather(*(relation.load() for relation in relations), return_exceptions=True)
-    for result in results:
-        if isinstance(result, Exception):
-            raise result
+    await asyncio.gather(*(relation.load() for relation in relations), return_exceptions=True)
     items.items = [reduce(lambda x, r: r.inject(x), relations, item) for item in items.items]
     return items

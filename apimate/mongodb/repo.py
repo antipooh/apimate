@@ -1,9 +1,9 @@
 from typing import AsyncGenerator, Optional, Type
 
-from apimate.query import BaseItemsList, CursorSort, ItemsListType, SearchQuery
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.collection import Collection
 
+from apimate.query import BaseItemsList, CursorSort, ItemsListType, SearchQuery
 from .crud import (PydanticModel, SavedModel, get_model, insert_model, remove_model, search_model, search_model_one,
                    update_model,
                    update_model_one)
@@ -49,3 +49,6 @@ class MongoRepo:
 
     async def _list_model(self, query: SearchQuery, result_type: Type[BaseItemsList]) -> ItemsListType:
         return await list_model(await self.get_collection(), self.model_type_select, query, result_type)
+
+
+

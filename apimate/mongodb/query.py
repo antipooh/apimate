@@ -1,8 +1,9 @@
+import asyncio
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Tuple, Type, Union
+from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Set, Tuple, Union, cast
 
 from bson import ObjectId
 from pydantic import constr, parse_obj_as
@@ -10,7 +11,7 @@ from pymongo.collection import Collection
 
 from apimate.query import (BaseItemsList, BoolFilter, Filter, IdsFilter, ItemsListType, OrderFilter,
                            OrderFilterOperation, QueryField, SearchQuery, TextFilter, TextFilterOperation)
-from .crud import TypeSelector
+from .crud import SavedModel, TypeSelector
 from .types import from_mongo
 from ..types import ID_STRING
 
@@ -88,7 +89,7 @@ class MongodbSearchQuery(SearchQuery):
 async def list_model(collection: Collection,
                      type_selector: TypeSelector,
                      query: MongodbSearchQuery,
-                     result_type: Type[BaseItemsList]) -> ItemsListType:
+                     result_type: ItemsListType) -> BaseItemsList:
     count = None
     if query.with_count:
         count = await collection.count_documents(query.find)
@@ -106,7 +107,49 @@ async def list_model(collection: Collection,
             items.append(model_type.parse_obj(data))
     finally:
         await cursor.close()
+    # noinspection PyCallingNonCallable
     return result_type(items=items,
                        page=query.page,
                        limit=query.limit,
                        count=count)
+
+
+SearchAwaitable = Callable[[dict], Awaitable[AsyncGenerator[SavedModel, None]]]
+
+
+class Relation:
+
+    def __init__(self, id_prop: str, target_prop: str, search: SearchAwaitable) -> None:
+        self.id_prop = id_prop
+        self.target_prop = target_prop
+        self.search = search
+        self.ids: Set[str] = set()
+        self.models: Dict[str, SavedModel] = {}
+
+    def extract_id(self, item: SavedModel) -> None:
+        rel_id = getattr(item, self.id_prop, None)
+        if rel_id:
+            self.ids.add(rel_id)
+
+    async def load(self) -> None:
+        if self.ids:
+            async for model in await self.search({'_id': {'$in': [ObjectId(id) for id in self.ids]}}):
+                self.models[model.id] = model
+
+    def inject(self, item: SavedModel) -> SavedModel:
+        rel_id = getattr(item, self.id_prop, None)
+        if rel_id:
+            setattr(item, self.target_prop, self.models.get(rel_id))
+        return item
+
+
+async def inject_relations(items: BaseItemsList, relations: List[Relation]) -> BaseItemsList:
+    for item in items.items:
+        for relation in relations:
+            relation.extract_id(cast(SavedModel, item))
+    results = await asyncio.gather(*(relation.load() for relation in relations), return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            raise result
+    items.items = [relation.inject(cast(SavedModel, item)) for item in items.items for relation in relations]
+    return items

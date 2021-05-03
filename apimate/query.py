@@ -230,11 +230,11 @@ class SearchQuery(metaclass=SearchQueryMeta):
             raise KeyError(f'Bad field in sort "{sort[0]}"')
 
 
-ItemsListType = TypeVar('ItemsListType')
-
-
 class BaseItemsList(BaseModel):
     items: List[BaseModel]
     page: Optional[int]
     limit: int
     count: Optional[int] = None
+
+
+ItemsListType = TypeVar('ItemsListType', bound=BaseItemsList)

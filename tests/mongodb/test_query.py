@@ -1,7 +1,7 @@
 import pytest
 from bson import ObjectId
 
-from apimate.mongodb.query import MongodbSearchQuery, Relation, inject_relations
+from apimate.mongodb.query import MongodbSearchQuery, Relation, inject_list_relations, inject_relations
 from apimate.query import IntQueryField, QueryField
 
 
@@ -58,13 +58,46 @@ class TestRelation:
         assert item.relation == 42
 
 
+@pytest.fixture
+def search(mocker):
+    def fabric(id, value):
+        found = mocker.MagicMock()
+        related = mocker.Mock(id=id, value=value)
+        found.__aiter__.return_value = [related]
+        return mocker.AsyncMock(return_value=found)
+
+    return fabric
+
+
 @pytest.mark.asyncio
-async def test_inject_relations(mocker):
-    items = mocker.Mock(items=[mocker.Mock(relation_id='608f2af5717eb800f2d41a5a')])
-    found = mocker.MagicMock()
-    related = mocker.Mock(id='608f2af5717eb800f2d41a5a')
-    found.__aiter__.return_value = [related]
-    search = mocker.AsyncMock(return_value=found)
-    await inject_relations(items, [Relation('relation_id', 'relation', search)])
-    search.assert_awaited()
-    assert items.items[0].relation == related
+async def test_inject_relations(mocker, search):
+    model = mocker.Mock(relation_id='608f2af5717eb800f2d41a5a', other_id='608f2af5717eb800f2d41a5b')
+    search_1 = search('608f2af5717eb800f2d41a5a', 11)
+    search_2 = search('608f2af5717eb800f2d41a5b', 12)
+    await inject_relations(model, [
+        Relation('relation_id', 'relation', search_1),
+        Relation('other_id', 'other', search_2)
+    ])
+    search_1.assert_awaited()
+    search_2.assert_awaited()
+    assert model.relation.value == 11
+    assert model.other.value == 12
+
+
+@pytest.mark.asyncio
+async def test_inject_list_relations(mocker, search):
+    items = mocker.Mock(items=[mocker.Mock(relation_id='608f2af5717eb800f2d41a5a', other_id=None),
+                               mocker.Mock(relation_id='608f2af5717eb800f2d41a5a', other_id='608f2af5717eb800f2d41a5b')
+                               ])
+    search_1 = search('608f2af5717eb800f2d41a5a', 11)
+    search_2 = search('608f2af5717eb800f2d41a5b', 12)
+    await inject_list_relations(items, [
+        Relation('relation_id', 'relation', search_1),
+        Relation('other_id', 'other', search_2)
+    ])
+    search_1.assert_awaited()
+    search_2.assert_awaited()
+    assert items.items[0].relation.value == 11
+    assert items.items[0].other is None
+    assert items.items[1].relation.value == 11
+    assert items.items[1].other.value == 12

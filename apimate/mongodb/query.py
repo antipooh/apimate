@@ -2,7 +2,7 @@ import asyncio
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, reduce
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Set, Tuple, Union, cast
 
 from bson import ObjectId
@@ -140,10 +140,22 @@ class Relation:
         rel_id = getattr(item, self.id_prop, None)
         if rel_id:
             setattr(item, self.target_prop, self.models.get(rel_id))
+        else:
+            setattr(item, self.target_prop, None)
         return item
 
 
-async def inject_relations(items: BaseItemsList, relations: List[Relation]) -> BaseItemsList:
+async def inject_relations(model: SavedModel, relations: List[Relation]) -> SavedModel:
+    for relation in relations:
+        relation.extract_id(model)
+    results = await asyncio.gather(*(relation.load() for relation in relations), return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            raise result
+    return reduce(lambda x, r: r.inject(x), relations, model)
+
+
+async def inject_list_relations(items: BaseItemsList, relations: List[Relation]) -> BaseItemsList:
     for item in items.items:
         for relation in relations:
             relation.extract_id(cast(SavedModel, item))
@@ -151,5 +163,5 @@ async def inject_relations(items: BaseItemsList, relations: List[Relation]) -> B
     for result in results:
         if isinstance(result, Exception):
             raise result
-    items.items = [relation.inject(cast(SavedModel, item)) for item in items.items for relation in relations]
+    items.items = [reduce(lambda x, r: r.inject(x), relations, item) for item in items.items]
     return items

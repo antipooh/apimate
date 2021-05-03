@@ -86,11 +86,22 @@ class FieldSort(IntFlag):
     DESC = 2
 
 
-class QueryField:
+class QueryField(metaclass=abc.ABCMeta):
     name: str
 
     def __init__(self, sort: Optional[FieldSort] = None) -> None:
         self.sort = sort or FieldSort.NO
+
+    @abc.abstractmethod
+    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+        ...
+
+    def can_sort(self, direction: SortDirection) -> bool:
+        return direction.ASC and FieldSort.ASC in self.sort or direction.DESC and FieldSort.DESC in self.sort
+
+
+class TextQueryField(QueryField):
+    filter_type: Type[TextFilter] = TextFilter
 
     def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
         if isinstance(value, Tuple):
@@ -99,16 +110,14 @@ class QueryField:
         else:
             op = TextFilterOperation.EQ
             value = str(value)
-        return TextFilter(field=self.name, op=op, value=value)
-
-    def can_sort(self, direction: SortDirection) -> bool:
-        return direction.ASC and FieldSort.ASC in self.sort or direction.DESC and FieldSort.DESC in self.sort
+        return self.filter_type(field=self.name, op=op, value=value)
 
 
 class BoolQueryField(QueryField):
+    filter_type: Type[BoolFilter] = BoolFilter
 
     def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
-        return BoolFilter(field=self.name, value=parse_obj_as(bool, value))
+        return self.filter_type(field=self.name, value=parse_obj_as(bool, value))
 
 
 class OrderedQueryField(QueryField):
@@ -138,6 +147,15 @@ class DatetimeQueryField(OrderedQueryField):
     filter_type = DatetimeFilter
 
 
+class IdsQueryField(QueryField):
+    id_type = str
+    filter_type: Type[IdsFilter] = IdsFilter
+
+    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+        parsed = parse_obj_as(FrozenSet[self.id_type], value)
+        return self.filter_type(field='ids', values=parsed)
+
+
 class SearchQueryMeta(abc.ABCMeta):
 
     def __new__(mcs, name, bases, namespace, **kwargs):
@@ -150,7 +168,7 @@ class SearchQueryMeta(abc.ABCMeta):
                 fields.update(base_fields)
             default_sort = getattr(base, 'default_sort', default_sort)
         for key, field in cls.__dict__.items():
-            if isinstance(field, QueryField):
+            if key != 'ids_field' and isinstance(field, QueryField):
                 fields[key] = field
                 field.name = key
         cls.__fields__ = fields
@@ -168,8 +186,8 @@ SortTuple = Tuple[str, Literal['asc', 'dsc']]
 
 class SearchQuery(metaclass=SearchQueryMeta):
     __fields__: Dict[str, QueryField]
-    id_type = str
     default_sort: Optional[Sort] = None
+    ids_field: IdsQueryField = IdsQueryField()
 
     def __init__(
             self,
@@ -196,7 +214,7 @@ class SearchQuery(metaclass=SearchQueryMeta):
         result = []
         for field_name, condition in filter.items():
             if field_name == 'ids':
-                return [self.parse_ids(condition)]
+                return [self.ids_field.parse_value(condition)]
             else:
                 field = self.__fields__.get(field_name)
                 if field:
@@ -207,10 +225,6 @@ class SearchQuery(metaclass=SearchQueryMeta):
                 else:
                     raise KeyError(f'Bad field in filter "{field_name}"')
         return result
-
-    def parse_ids(self, values: List[Any]) -> Filter:
-        parsed = parse_obj_as(FrozenSet[self.id_type], values)
-        return IdsFilter(field='ids', values=parsed)
 
     def parse_sort_value(self, value: Union[Json, str]) -> Optional[Sort]:
         if isinstance(value, str):

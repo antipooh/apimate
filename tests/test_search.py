@@ -4,12 +4,12 @@ from decimal import Decimal
 import pytest
 
 from apimate.query import (DatetimeFilter, DatetimeQueryField, DecimalFilter, DecimalQueryField, FieldSort, IdsFilter,
-                           IntFilter, IntQueryField, OrderFilterOperation, QueryField, SearchQuery, SortDirection,
-                           TextFilter, TextFilterOperation)
+                           IntFilter, IntQueryField, OrderFilterOperation, SearchQuery, SortDirection, TextFilter,
+                           TextFilterOperation, TextQueryField)
 
 
 class FakeSearchQuery(SearchQuery):
-    text = QueryField(sort=FieldSort.ASC | FieldSort.DESC)
+    text = TextQueryField(sort=FieldSort.ASC | FieldSort.DESC)
     default_sort = ('text', SortDirection.DESC)
 
 
@@ -17,26 +17,26 @@ def test_collect_fields():
     query = FakeSearchQuery(filter=None, sort=None)
     assert len(query.__fields__) == 1
     filter = query.__fields__['text']
-    assert isinstance(filter, QueryField)
+    assert isinstance(filter, TextQueryField)
     assert query.default_sort == ('text', SortDirection.DESC)
 
 
 class InheritedFakeSearchQuery(FakeSearchQuery):
-    value = QueryField()
+    value = TextQueryField()
 
 
 def test_collect_base_fields():
     query = InheritedFakeSearchQuery(filter=None, sort=None)
     assert set(query.__fields__) == {'text', 'value'}
-    assert isinstance(query.__fields__['text'], QueryField)
-    assert isinstance(query.__fields__['value'], QueryField)
+    assert isinstance(query.__fields__['text'], TextQueryField)
+    assert isinstance(query.__fields__['value'], TextQueryField)
     assert query.default_sort == ('text', SortDirection.DESC)
 
 
 def test_bad_default_sort():
     with pytest.raises(ValueError) as e:
         class _(FakeSearchQuery):
-            value = QueryField()
+            value = TextQueryField()
             default_sort = ('value', SortDirection.ASC)
     assert str(e.value) == "Can`t use default sort by ('value', <SortDirection.ASC: 1>)"
 

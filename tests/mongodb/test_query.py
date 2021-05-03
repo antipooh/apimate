@@ -2,12 +2,12 @@ import pytest
 from bson import ObjectId
 
 from apimate.mongodb.query import MongodbSearchQuery, Relation, inject_list_relations, inject_relations
-from apimate.query import IntQueryField, QueryField
+from apimate.query import IntQueryField, TextQueryField
 
 
 class FakeSearch(MongodbSearchQuery):
-    atext = QueryField()
-    btext = QueryField()
+    atext = TextQueryField()
+    btext = TextQueryField()
     ivalue = IntQueryField()
 
 

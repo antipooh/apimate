@@ -1,105 +1,112 @@
 import asyncio
 import re
 from collections import defaultdict
-from dataclasses import dataclass
 from functools import cached_property, reduce
-from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Set, Tuple, Union, cast
+from typing import AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Set, Tuple, Type, cast
 
 from bson import ObjectId
-from pydantic import constr, parse_obj_as
 from pymongo.collection import Collection
 
-from apimate.query import (BaseItemsList, BoolFilter, Filter, IdsFilter, ItemsListType, OrderFilter,
-                           OrderFilterOperation, QueryField, SearchQuery, TextFilter, TextFilterOperation)
+from apimate.query import (BaseItemsList, BoolFilter, DatetimeFilter, DecimalFilter, Filter, IdsFilter, IntFilter,
+                           ItemsListType, OrderFilter, OrderFilterOperation, RefFilter,
+                           SearchQuery, TextFilter, TextFilterOperation)
 from .crud import SavedModel, TypeSelector
 from .types import from_mongo
-from ..types import ID_STRING
 
 
-@dataclass(frozen=True)
-class RefFilter(Filter):
-    value: ObjectId
+def filter_ref(filter: RefFilter) -> Tuple[str, dict]:
+    return filter.field, {'$eq': ObjectId(filter.value)}
 
 
-class RefQueryField(QueryField):
-
-    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
-        return RefFilter(field=self.name, value=ObjectId(parse_obj_as(constr(regex=ID_STRING), value)))
+def filter_bool(filter: BoolFilter) -> Tuple[str, dict]:
+    return filter.field, {'$eq': filter.value}
 
 
-class MongodbSearchQuery(SearchQuery):
-    id_type = constr(regex=ID_STRING)
-    order_filter_map = {
-        OrderFilterOperation.EQ: '$eq',
-        OrderFilterOperation.NEQ: '$ne',
-        OrderFilterOperation.LT: '$lt',
-        OrderFilterOperation.LTE: '$lte',
-        OrderFilterOperation.GT: '$gt',
-        OrderFilterOperation.GTE: '$gte',
+def filter_ids(filter: IdsFilter) -> Tuple[str, dict]:
+    return '_id', {'$in': [ObjectId(x) for x in filter.values]}
+
+
+def filter_text(filter: TextFilter) -> Tuple[str, dict]:
+    if filter.op == TextFilterOperation.EQ:
+        cond = {'$eq': filter.value}
+    elif filter.op == TextFilterOperation.NEQ:
+        cond = {'$ne': filter.value}
+    else:
+        value = filter.value
+        if filter.op == TextFilterOperation.START:
+            value = f'^{value}'
+        elif filter.op == TextFilterOperation.END:
+            value = f'{value}$'
+        cond = {'$regex': re.compile(value, re.IGNORECASE | re.UNICODE)}
+    return filter.field, cond
+
+
+def filter_ordered(filter: OrderFilter) -> Tuple[str, dict]:
+    return filter.field, {{
+                              OrderFilterOperation.EQ: '$eq',
+                              OrderFilterOperation.NEQ: '$ne',
+                              OrderFilterOperation.LT: '$lt',
+                              OrderFilterOperation.LTE: '$lte',
+                              OrderFilterOperation.GT: '$gt',
+                              OrderFilterOperation.GTE: '$gte',
+                          }[filter.op]: filter.value}
+
+
+class MongodbSearchBuilder:
+    filter_map: Dict[Type[Filter], Callable[[Filter], Tuple[str, dict]]] = {
+        RefFilter: filter_ref,
+        IdsFilter: filter_ids,
+        BoolFilter: filter_bool,
+        TextFilter: filter_text,
+        IntFilter: filter_ordered,
+        DecimalFilter: filter_ordered,
+        DatetimeFilter: filter_ordered,
     }
 
+    def __init__(self, query: SearchQuery):
+        self.query: SearchQuery = query
+
     @cached_property
-    def find(self) -> dict:
+    def filter(self) -> dict:
         find_request = defaultdict(dict)
-        for filter in self.filter:
-            field, cond = None, None
-            if isinstance(filter, IdsFilter):
-                field, cond = self.filter_ids(filter)
-                return {field: cond}  # If has ids list, d`not use any other filters
-            elif isinstance(filter, TextFilter):
-                field, cond = self.filter_text(filter)
-            elif isinstance(filter, (BoolFilter, RefFilter)):
-                field, cond = self.filter_equal(filter)
-            elif isinstance(filter, OrderFilter):
-                field, cond = self.filter_ordered(filter)
-            if field and cond:
+        for filter in self.query.filter:
+            filter_builder = self.filter_map[filter.__class__]
+            if filter_builder:
+                field, cond = filter_builder(filter)
                 find_request[field].update(cond)
             else:
                 raise NotImplementedError(f'Transform for filter {filter.__class__} not implemented')
         return dict(find_request)
 
     @property
-    def sorting(self) -> Tuple[str, int]:
-        return self.sort[0], self.sort[1].value
+    def sort(self) -> Tuple[str, int]:
+        return self.query.sort[0], self.query.sort[1].value
 
-    def filter_ids(self, filter: IdsFilter) -> Tuple[str, dict]:
-        return '_id', {'$in': [ObjectId(x) for x in filter.values]}
+    @property
+    def skip(self) -> Optional[int]:
+        if self.query.page > 1:
+            return (self.query.page - 1) * self.query.limit
 
-    def filter_text(self, filter: TextFilter) -> Tuple[str, dict]:
-        if filter.op == TextFilterOperation.EQ:
-            cond = {'$eq': filter.value}
-        elif filter.op == TextFilterOperation.NEQ:
-            cond = {'$ne': filter.value}
-        else:
-            value = filter.value
-            if filter.op == TextFilterOperation.START:
-                value = f'^{value}'
-            elif filter.op == TextFilterOperation.END:
-                value = f'{value}$'
-            cond = {'$regex': re.compile(value, re.IGNORECASE | re.UNICODE)}
-        return filter.field, cond
-
-    def filter_ordered(self, filter: OrderFilter) -> Tuple[str, dict]:
-        return filter.field, {self.order_filter_map[filter.op]: filter.value}
-
-    def filter_equal(self, filter: Union[BoolFilter, RefFilter]) -> Tuple[str, dict]:
-        return filter.field, {'$eq': filter.value}
+    @property
+    def limit(self) -> int:
+        return self.query.limit
 
 
 async def list_model(collection: Collection,
                      type_selector: TypeSelector,
-                     query: MongodbSearchQuery,
+                     query: SearchQuery,
                      result_type: ItemsListType) -> BaseItemsList:
+    query_builder = MongodbSearchBuilder(query)
     count = None
     if query.with_count:
-        count = await collection.count_documents(query.find)
-    cursor = collection.find(query.find)
+        count = await collection.count_documents(query_builder.filter)
+    cursor = collection.find(query_builder.filter)
     try:
-        if query.sort:
-            cursor = cursor.sort(*query.sort)
-        if query.page > 1:
-            cursor = cursor.skip((query.page - 1) * query.limit)
-        cursor = cursor.limit(query.limit)
+        if query_builder.sort:
+            cursor = cursor.sort(*query_builder.sort)
+        if query_builder.skip:
+            cursor = cursor.skip(query_builder.skip)
+        cursor = cursor.limit(query_builder.limit)
         items = []
         async for doc in cursor:
             data = from_mongo(doc)

@@ -1,27 +1,27 @@
 import pytest
 from bson import ObjectId
 
-from apimate.mongodb.query import MongodbSearchQuery, Relation, inject_list_relations, inject_relations
-from apimate.query import IntQueryField, TextQueryField
+from apimate.mongodb.query import MongodbSearchBuilder, Relation, inject_list_relations, inject_relations
+from apimate.query import IntQueryField, SearchQuery, TextQueryField
 
 
-class FakeSearch(MongodbSearchQuery):
+class FakeSearch(SearchQuery):
     atext = TextQueryField()
     btext = TextQueryField()
     ivalue = IntQueryField()
 
 
 @pytest.fixture
-def make_query():
+def make_builder():
     def fabric(filter, sort=None):
-        return FakeSearch(filter=filter, sort=sort)
+        return MongodbSearchBuilder(FakeSearch(filter=filter, sort=sort))
 
     return fabric
 
 
-def test_filter_ids(make_query):
-    query = make_query({"ids": ['6086ae5ea8f76b5d464350f6', '6086ae5ea8f76b5d464350f8']})
-    assert set(query.find['_id']['$in']) == {ObjectId('6086ae5ea8f76b5d464350f6'), ObjectId('6086ae5ea8f76b5d464350f8')}
+def test_filter_ids(make_builder):
+    query = make_builder({"ids": ['6086ae5ea8f76b5d464350f6', '6086ae5ea8f76b5d464350f8']})
+    assert set(query.filter['_id']['$in']) == {ObjectId('6086ae5ea8f76b5d464350f6'), ObjectId('6086ae5ea8f76b5d464350f8')}
 
 
 @pytest.mark.parametrize('filter, result', (
@@ -29,9 +29,9 @@ def test_filter_ids(make_query):
         ({'atext': 'foo', 'btext': 'bar'}, {'atext': {'$eq': 'foo'}, 'btext': {'$eq': 'bar'}}),
         ({'ivalue': 12}, {'ivalue': {'$eq': 12}}),
 ))
-def test_filters(filter, result, make_query):
-    query = make_query(filter)
-    assert query.find == result
+def test_filters(filter, result, make_builder):
+    query = make_builder(filter)
+    assert query.filter == result
 
 
 class TestRelation:

@@ -60,6 +60,11 @@ class OrderFilterOperation(Enum):
 
 
 @dataclass(frozen=True)
+class RefFilter(Filter):
+    value: str
+
+
+@dataclass(frozen=True)
 class OrderFilter(Filter):
     op: OrderFilterOperation
     value: Any
@@ -90,10 +95,14 @@ class QueryField(metaclass=abc.ABCMeta):
     name: str
 
     def __init__(self, sort: Optional[FieldSort] = None) -> None:
+        """
+
+        :rtype: object
+        """
         self.sort = sort or FieldSort.NO
 
     @abc.abstractmethod
-    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
         ...
 
     def can_sort(self, direction: SortDirection) -> bool:
@@ -103,7 +112,7 @@ class QueryField(metaclass=abc.ABCMeta):
 class TextQueryField(QueryField):
     filter_type: Type[TextFilter] = TextFilter
 
-    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
         if isinstance(value, Tuple):
             op = TextFilterOperation(value[0])
             value = str(value[1])
@@ -116,7 +125,7 @@ class TextQueryField(QueryField):
 class BoolQueryField(QueryField):
     filter_type: Type[BoolFilter] = BoolFilter
 
-    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
         return self.filter_type(field=self.name, value=parse_obj_as(bool, value))
 
 
@@ -124,7 +133,7 @@ class OrderedQueryField(QueryField):
     filter_type: Type[OrderFilter]
 
     # noinspection PyArgumentList
-    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
         value_type = self.filter_type.__annotations__['value']
         if isinstance(value, Tuple):
             op = OrderFilterOperation(value[0])
@@ -148,12 +157,21 @@ class DatetimeQueryField(OrderedQueryField):
 
 
 class IdsQueryField(QueryField):
-    id_type = str
     filter_type: Type[IdsFilter] = IdsFilter
 
-    def parse_value(self, value: Union[Tuple[str, Any], Any]) -> Filter:
-        parsed = parse_obj_as(FrozenSet[self.id_type], value)
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
+        id_type = kwargs['id_type']
+        parsed = parse_obj_as(FrozenSet[id_type], value)
         return self.filter_type(field='ids', values=parsed)
+
+
+class RefQueryField(QueryField):
+    filter_type: Type[RefFilter] = RefFilter
+
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
+        id_type = kwargs['id_type']
+        parsed = parse_obj_as(id_type, value)
+        return self.filter_type(field=self.name, value=parsed)
 
 
 class SearchQueryMeta(abc.ABCMeta):
@@ -187,7 +205,7 @@ SortTuple = Tuple[str, Literal['asc', 'dsc']]
 class SearchQuery(metaclass=SearchQueryMeta):
     __fields__: Dict[str, QueryField]
     default_sort: Optional[Sort] = None
-    ids_field: IdsQueryField = IdsQueryField()
+    id_type: Type = str
 
     def __init__(
             self,
@@ -197,6 +215,7 @@ class SearchQuery(metaclass=SearchQueryMeta):
             limit: conint(ge=1, lt=251) = Query(20),
             with_count: bool = Query(False, alias='withCount')
     ):
+        self.ids_field = IdsQueryField()
         try:
             self.filter: FrozenSet[Filter] = frozenset(self.parse_filter_values(filter)) if filter else frozenset()
             self.sort: Optional[Sort] = self.parse_sort_value(sort) if sort else self.default_sort
@@ -214,14 +233,14 @@ class SearchQuery(metaclass=SearchQueryMeta):
         result = []
         for field_name, condition in filter.items():
             if field_name == 'ids':
-                return [self.ids_field.parse_value(condition)]
+                return [self.ids_field.parse_value(condition, id_type=self.id_type)]
             else:
                 field = self.__fields__.get(field_name)
                 if field:
                     if isinstance(condition, dict):
-                        result.extend(field.parse_value(x) for x in condition.items())
+                        result.extend(field.parse_value(x, id_type=self.id_type) for x in condition.items())
                     else:
-                        result.append(field.parse_value(condition))
+                        result.append(field.parse_value(condition, id_type=self.id_type))
                 else:
                     raise KeyError(f'Bad field in filter "{field_name}"')
         return result

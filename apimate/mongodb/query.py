@@ -15,7 +15,7 @@ from .types import from_mongo
 
 
 def filter_ref(filter: RefFilter) -> Tuple[str, dict]:
-    return filter.field, {'$eq': ObjectId(filter.value)}
+    return filter.field, {'$eq': filter.value}
 
 
 def filter_bool(filter: BoolFilter) -> Tuple[str, dict]:
@@ -80,7 +80,8 @@ class MongodbSearchBuilder:
 
     @property
     def sort(self) -> Tuple[str, int]:
-        return self.query.sort[0], self.query.sort[1].value
+        if self.query.sort:
+            return self.query.sort[0], self.query.sort[1].value
 
     @property
     def skip(self) -> Optional[int]:

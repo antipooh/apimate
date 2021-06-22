@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum, IntEnum, IntFlag
 from typing import Any, Dict, FrozenSet, Iterable, List, Literal, Optional, Tuple, Type, TypeVar, Union
@@ -94,11 +94,12 @@ class FieldSort(IntFlag):
 class QueryField(metaclass=abc.ABCMeta):
     name: str
 
-    def __init__(self, sort: Optional[FieldSort] = None) -> None:
+    def __init__(self, field: Optional[str] = None, sort: Optional[FieldSort] = None) -> None:
         """
 
         :rtype: object
         """
+        self._field = field
         self.sort = sort or FieldSort.NO
 
     @abc.abstractmethod
@@ -108,25 +109,29 @@ class QueryField(metaclass=abc.ABCMeta):
     def can_sort(self, direction: SortDirection) -> bool:
         return direction.ASC and FieldSort.ASC in self.sort or direction.DESC and FieldSort.DESC in self.sort
 
+    @property
+    def field(self) -> str:
+        return self._field if self._field else self.name
+
 
 class TextQueryField(QueryField):
     filter_type: Type[TextFilter] = TextFilter
 
     def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
-        if isinstance(value, Tuple):
+        if isinstance(value, (Tuple, List)):
             op = TextFilterOperation(value[0])
             value = str(value[1])
         else:
             op = TextFilterOperation.EQ
             value = str(value)
-        return self.filter_type(field=self.name, op=op, value=value)
+        return self.filter_type(field=self.field, op=op, value=value)
 
 
 class BoolQueryField(QueryField):
     filter_type: Type[BoolFilter] = BoolFilter
 
     def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
-        return self.filter_type(field=self.name, value=parse_obj_as(bool, value))
+        return self.filter_type(field=self.field, value=parse_obj_as(bool, value))
 
 
 class OrderedQueryField(QueryField):
@@ -135,13 +140,13 @@ class OrderedQueryField(QueryField):
     # noinspection PyArgumentList
     def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
         value_type = self.filter_type.__annotations__['value']
-        if isinstance(value, Tuple):
+        if isinstance(value, (Tuple, List)):
             op = OrderFilterOperation(value[0])
             value = parse_obj_as(value_type, value[1])
         else:
             op = OrderFilterOperation.EQ
             value = parse_obj_as(value_type, value)
-        return self.filter_type(field=self.name, op=op, value=value)
+        return self.filter_type(field=self.field, op=op, value=value)
 
 
 class IntQueryField(OrderedQueryField):
@@ -154,6 +159,20 @@ class DecimalQueryField(OrderedQueryField):
 
 class DatetimeQueryField(OrderedQueryField):
     filter_type = DatetimeFilter
+
+
+class DateQueryField(OrderedQueryField):
+    filter_type = DatetimeFilter
+
+    def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
+        if isinstance(value, (Tuple, List)):
+            op = OrderFilterOperation(value[0])
+            value = parse_obj_as(date, value[1])
+        else:
+            op = OrderFilterOperation.EQ
+            value = parse_obj_as(date, value)
+        value = datetime.combine(value, time())
+        return self.filter_type(field=self.field, op=op, value=value)
 
 
 class IdsQueryField(QueryField):
@@ -171,7 +190,7 @@ class RefQueryField(QueryField):
     def parse_value(self, value: Union[Tuple[str, Any], Any], **kwargs) -> Filter:
         id_type = kwargs['id_type']
         parsed = parse_obj_as(id_type, value)
-        return self.filter_type(field=self.name, value=parsed)
+        return self.filter_type(field=self.field, value=parsed)
 
 
 class SearchQueryMeta(abc.ABCMeta):

@@ -24,6 +24,7 @@ setup(
     version=__version__,
     description='API mate',
     long_description='Collection utils for create clean architecture REST API application with FastAPI',
+    long_description_content_type='text/plain',
     url="https://github.com/antipooh/apimate.git",
     license='MIT',
     classifiers=[
